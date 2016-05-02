@@ -45,7 +45,7 @@ class TunDevice:
     def __del__(self):
         os.close(self.fd)
 
-    def setIpAddr(self, srcip, dstip, mtu):
+    def set_ip_addr(self, srcip, dstip, mtu):
         if PLATFORM == "Linux":
             os.system("ip link set %s up mtu %d"
                       % (self.ifname, mtu))
@@ -57,11 +57,21 @@ class TunDevice:
             os.system("ifconfig %s %s %s up mtu %d"
                       % (self.ifname, srcip, dstip, mtu))
 
+
 def to_ip_str(data):
     return "%d.%d.%d.%d" % (ord(data[0]), ord(data[1]), ord(data[2]), ord(data[3]))
 
+
 def parse_ip(ip):
     return ''.join(map(chr, map(int, ip.split('.'))))
+
+
+def calc_checksum(data):
+    ck_sum = sum(map(ord, data))
+    ck_sum = (ck_sum & 0xFFFF) + (ck_sum >> 16 & 0xFFFF)
+    ck_sum = ~ck_sum & 0xFFFF
+    return ck_sum
+
 
 class Task:
 
@@ -80,22 +90,23 @@ class Task:
             print('Wrong packet: too short')
             return
 
-        src_ip = packet[16:20]
-        dst_ip = packet[20:24]
+        src_ip = packet[12:16]
+        dst_ip = packet[16:20]
         print("%s -> %s" % (to_ip_str(src_ip), to_ip_str(dst_ip)))
         if src_ip != self.remote_ip or dst_ip != self.local_ip:
             print("discard unexcepted ip")
             return
 
-        # TODO modify the checksum
-        packet = ''.join([packet[:16], self.nat_src_ip, self.nat_dst_ip, packet[24:]])
+        packet = ''.join([packet[:10], '\0\0', self.nat_src_ip, self.nat_dst_ip, packet[20:]])
+        checksum = calc_checksum(packet)
+        packet = ''.join([packet[:10], struct.pack('H', checksum), packet[12:]])
         os.write(self.write_fd, packet)
 
 
 tun_a = TunDevice("tun7")
 tun_b = TunDevice("tun8")
-tun_a.setIpAddr("172.19.0.2", "172.19.0.1", MTU)
-tun_b.setIpAddr("172.20.0.1", "172.20.0.2", MTU)
+tun_a.set_ip_addr("172.19.0.2", "172.19.0.1", MTU)
+tun_b.set_ip_addr("172.20.0.1", "172.20.0.2", MTU)
 
 task_a = Task(tun_a.fd, tun_b.fd, "172.19.0.2", "172.19.0.1", "172.20.0.2", "172.20.0.1")
 task_b = Task(tun_b.fd, tun_a.fd, "172.20.0.1", "172.20.0.2", "172.19.0.1", "172.19.0.2")
