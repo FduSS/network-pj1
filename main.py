@@ -2,6 +2,7 @@ import os
 import fcntl
 import time
 import platform
+import sys
 import struct
 import socket
 import select
@@ -19,7 +20,8 @@ else:
 
 class TunDevice:
 
-    TUN_MODE = 0x0001
+    IFF_TUN = 0x0001
+    IFF_NO_PI = 0x1000
     TUNSETIFF = 0x400454ca
 
     def __init__(self, ifname):
@@ -30,15 +32,15 @@ class TunDevice:
         elif PLATFORM == "Linux":
             TUN_DEVICE = "/dev/net/tun"
 
-        self.fd = os.open(TUN_DEVICE, os.O_RDWR | os.O_NONBLOCK)
+        self.fd = os.open(TUN_DEVICE, os.O_RDWR)
         if self.fd < 0:
             raise "Cannot open TUN_DEVICE: " + TUN_DEVICE
 
-        fcntl.fcntl(self.fd, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
+        #fcntl.fcntl(self.fd, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
 
         if PLATFORM == "Linux":
             fcntl.ioctl(self.fd, self.TUNSETIFF,
-                        struct.pack("16sH", ifname, self.TUN_MODE))
+                        struct.pack("16sH", ifname, self.IFF_TUN | self.IFF_NO_PI))
         elif PLATFORM == "Darwin":
             pass
 
@@ -66,14 +68,28 @@ def parse_ip(ip):
     return ''.join(map(chr, map(int, ip.split('.'))))
 
 
-def calc_checksum(data):
-    ck_sum = sum(map(ord, data))
-    ck_sum = (ck_sum & 0xFFFF) + (ck_sum >> 16 & 0xFFFF)
-    ck_sum = ~ck_sum & 0xFFFF
-    return ck_sum
+def calc_checksum(msg, s=0):
+    for i in range(0, len(msg), 2):
+        s += ord(msg[i])
+        if i + 1 < len(msg):
+            s += ord(msg[i+1]) << 8
+    while s > 0xffff:
+        s = (s & 0xffff) + (s >> 16)
+    return ~s & 0xffff
+
+
+def modify_checksum(msg, offset, init=0):
+    a = msg[:offset]
+    b = msg[offset+2:]
+    checksum = calc_checksum(a + b, init)
+    return a + struct.pack('H', checksum) + b
 
 
 class Task:
+
+    ICMP = 0x01
+    TCP = 0x06
+    UDP = 0x11
 
     def __init__(self, read_fd, write_fd, remote_ip, local_ip, nat_src_ip, nat_dst_ip):
         self.read_fd = read_fd
@@ -92,19 +108,39 @@ class Task:
 
         src_ip = packet[12:16]
         dst_ip = packet[16:20]
-        print("%s -> %s" % (to_ip_str(src_ip), to_ip_str(dst_ip)))
+        sys.stdout.write("%s -> %s" % (to_ip_str(src_ip), to_ip_str(dst_ip)))
         if src_ip != self.remote_ip or dst_ip != self.local_ip:
             print("discard unexcepted ip")
             return
 
-        packet = ''.join([packet[:10], '\0\0', self.nat_src_ip, self.nat_dst_ip, packet[20:]])
-        checksum = calc_checksum(packet)
-        packet = ''.join([packet[:10], struct.pack('H', checksum), packet[12:]])
+        header_len = (ord(packet[0]) & 0xf) * 4
+        packet_len = (ord(packet[2]) << 8)+ ord(packet[3])
+        packet = packet[:packet_len]
+        ip_header = modify_checksum(packet[:12] + self.nat_src_ip + self.nat_dst_ip + packet[20:header_len], 10)
+        packet = packet[header_len:]
+
+        packet_type = ord(ip_header[9])
+        if packet_type == self.ICMP:
+            sys.stdout.write(' ICMP\n')
+            packet = modify_checksum(packet, 2)
+        elif packet_type == self.TCP:
+            sys.stdout.write(' TCP\n')
+            pseudo = struct.pack('!4s4sBBH', self.nat_src_ip, self.nat_dst_ip, 0, self.TCP, packet_len - header_len)
+            packet = modify_checksum(packet, 16, ~calc_checksum(pseudo) & 0xffff)
+        elif packet_type == self.UDP:
+            sys.stdout.write(' UDP\n')
+            pseudo = struct.pack('!4s4sBBH', self.nat_src_ip, self.nat_dst_ip, 0, self.UDP, packet_len - header_len)
+            packet = modify_checksum(packet, 6, ~calc_checksum(pseudo) & 0xffff)
+        else:
+            sys.stdout.write(' unknown\n')
+
+        packet = ip_header + packet
+
         os.write(self.write_fd, packet)
 
 
-tun_a = TunDevice("tun7")
-tun_b = TunDevice("tun8")
+tun_a = TunDevice("tun8")
+tun_b = TunDevice("tun9")
 tun_a.set_ip_addr("172.19.0.2", "172.19.0.1", MTU)
 tun_b.set_ip_addr("172.20.0.1", "172.20.0.2", MTU)
 
@@ -113,8 +149,7 @@ task_b = Task(tun_b.fd, tun_a.fd, "172.20.0.1", "172.20.0.2", "172.19.0.1", "172
 
 
 while 1:
-    rlist, wlist, xlist = select.select([tun_a.fd, tun_b.fd], [], [], 1)
-    print(rlist)
+    rlist, wlist, xlist = select.select([tun_a.fd, tun_b.fd], [], [], 5)
     for fd in rlist:
         if fd == tun_a.fd:
             task_a.do_transfer()
