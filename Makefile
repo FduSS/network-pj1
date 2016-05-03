@@ -111,6 +111,30 @@ transfer/fast:
 	$(MAKE) -f CMakeFiles/transfer.dir/build.make CMakeFiles/transfer.dir/build
 .PHONY : transfer/fast
 
+linux.o: linux.c.o
+.PHONY : linux.o
+
+# target to build an object file
+linux.c.o:
+	$(MAKE) -f CMakeFiles/transfer.dir/build.make CMakeFiles/transfer.dir/linux.c.o
+.PHONY : linux.c.o
+
+linux.i: linux.c.i
+.PHONY : linux.i
+
+# target to preprocess a source file
+linux.c.i:
+	$(MAKE) -f CMakeFiles/transfer.dir/build.make CMakeFiles/transfer.dir/linux.c.i
+.PHONY : linux.c.i
+
+linux.s: linux.c.s
+.PHONY : linux.s
+
+# target to generate assembly for a file
+linux.c.s:
+	$(MAKE) -f CMakeFiles/transfer.dir/build.make CMakeFiles/transfer.dir/linux.c.s
+.PHONY : linux.c.s
+
 main.o: main.c.o
 .PHONY : main.o
 
@@ -144,6 +168,9 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... transfer"
+	@echo "... linux.o"
+	@echo "... linux.i"
+	@echo "... linux.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

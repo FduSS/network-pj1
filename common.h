@@ -5,15 +5,19 @@
 #ifndef TRANSFER_COMMON_H
 #define TRANSFER_COMMON_H
 
+#include <stdio.h>
+#include <stdlib.h>
+
+
 #if defined(__linux__)
 #define LINUX
-#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <linux/if_tun.h>
-#include <linux/if.h>
+#define TUN_DEVICE "/dev/net/tun"
+#define A_NAME "tunA"
+#define B_NAME "tunB"
 
 #elif defined(_WIN32)
 #define WINDOWS
@@ -24,6 +28,10 @@
 #else
 #error "Unsupported system!"
 #endif
+
+extern int create_tun(char* name);
+extern void setup_tun(char* name, char* src, char* dst, int mtu);
+extern void fatal(char* msg);
 
 
 #endif //TRANSFER_COMMON_H
