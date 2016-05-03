@@ -1,16 +1,11 @@
 #include <stdio.h>
-#include <netinet/in.h>
-#include <linux/if_tun.h>
-#include <linux/if.h>
 #include <fcntl.h>
 #include <stdlib.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/select.h>
-#include <arpa/inet.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+
+#include "common.h"
 
 #define TUN_DEVICE "/dev/net/tun"
 #define A_NAME "tunA"
