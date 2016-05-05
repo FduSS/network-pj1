@@ -8,9 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define MTU 1500
 
-#if defined(__linux__)
-#define LINUX
+#if defined(LINUX)
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <arpa/inet.h>
@@ -19,11 +19,12 @@
 #define A_NAME "tunA"
 #define B_NAME "tunB"
 
-#elif defined(_WIN32)
-#define WINDOWS
-
-#elif defined(__APPLE__)
-#define OSX
+#elif defined(OSX)
+#include <netinet/ip.h>
+#include <arpa/inet.h>
+#define TUN_DEVICE "/dev/"
+#define A_NAME "tun8"
+#define B_NAME "tun9"
 
 #else
 #error "Unsupported system!"
