@@ -20,7 +20,7 @@ void setup_task(struct task* task, char* name, int in_fd, int out_fd,
   struct timespec now;
   get_now(&now);
 
-  long brust = config_speed_limit / 32;
+  long brust = config_speed_limit / 5;
   *task = (struct task) {
       .name = name,
       .in_fd = in_fd,
@@ -68,7 +68,6 @@ static int task_drop_packet(struct task* task, char* packet, ssize_t len) {
   stat->token -= len;
   if (stat->token < 0) {
     // limit the speed
-    printf("drop by speed limit.\n");
     stat->token = 0;
     return 1;
   }
