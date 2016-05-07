@@ -4,8 +4,8 @@
 #include <sys/ioctl.h>
 #include <linux/if_tun.h>
 #include <linux/if.h>
-
 #include "../common.h"
+
 
 int create_tun(char* name) {
   int fd = open(TUN_DEVICE, O_RDWR);
@@ -42,3 +42,6 @@ void setup_tun(char* name, char* src, char* dst, int mtu) {
   system(cmd);
 }
 
+void get_now(struct timespec* t) {
+  clock_gettime(CLOCK_MONOTONIC, t);
+}

@@ -11,6 +11,7 @@
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <time.h>
 #define TUN_DEVICE "/dev/net/tun"
 #define A_NAME "tunA"
 #define B_NAME "tunB"
