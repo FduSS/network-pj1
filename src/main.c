@@ -60,30 +60,16 @@ int main(int argc, char* argv[]) {
   printf("Successfully init tun interfaces.\n");
 
   struct task tasks[2];
-  tasks[0] = (struct task) {
-      .in_fd = tun_a,
-      .out_fd = tun_b,
-      .src = inet_addr(A_SRC),
-      .dst = inet_addr(A_DST),
-      .nat_src = inet_addr(B_SRC),
-      .nat_dst = inet_addr(B_DST)
-  };
-
-  tasks[1] = (struct task) {
-      .in_fd = tun_b,
-      .out_fd = tun_a,
-      .src = inet_addr(B_DST),
-      .dst = inet_addr(B_SRC),
-      .nat_src = inet_addr(A_DST),
-      .nat_dst = inet_addr(A_SRC)
-  };
-
-  for (int i = 0; i < 2; ++i) {
-    setup_task(tasks + i);
-  }
+  setup_task(tasks, "A->B", tun_a, tun_b,
+             inet_addr(A_SRC), inet_addr(A_DST), inet_addr(B_SRC), inet_addr(B_DST));
+  setup_task(tasks + 1, "B->A", tun_b, tun_a,
+             inet_addr(B_DST), inet_addr(B_SRC), inet_addr(A_DST), inet_addr(A_SRC));
 
   while (1) {
     do_poll(tasks, 2);
     timeout_dispatch();
+    for (int i = 0; i < 2; ++i) {
+      task_update(tasks + i);
+    }
   }
 }

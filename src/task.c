@@ -14,7 +14,31 @@ struct pending_write {
     char packet[0];
 };
 
-void setup_task(struct task* task) {
+void setup_task(struct task* task, char* name, int in_fd, int out_fd,
+                uint32_t src, uint32_t dst, uint32_t nat_src, uint32_t nat_dst) {
+
+  struct timespec now;
+  get_now(&now);
+
+  long brust = config_speed_limit / 32;
+  *task = (struct task) {
+      .name = name,
+      .in_fd = in_fd,
+      .out_fd = out_fd,
+      .src = src,
+      .dst = dst,
+      .nat_src = nat_src,
+      .nat_dst = nat_dst,
+      .stat = {
+          .sec_data_count = 0,
+          .sec_packet_count = 0,
+          .token = brust,
+          .token_brust = brust,
+          .token_per_sec = config_speed_limit,
+          .last_update = now,
+          .last_sec = now,
+      }
+  };
 }
 
 static int task_drop_packet(struct task* task, char* packet, ssize_t len) {
@@ -25,10 +49,27 @@ static int task_drop_packet(struct task* task, char* packet, ssize_t len) {
   uint32_t src = *(uint32_t*)(packet + 12);
   uint32_t dst = *(uint32_t*)(packet + 16);
   if (src != task->src || dst != task->dst) {
+    // unexcepted packet
     return -1;
   }
 
   if ((double)rand() / RAND_MAX < config_drop_rate) {
+    // drop packet
+    return 1;
+  }
+
+  struct speed_stat* stat = &task->stat;
+
+  if (stat->token_per_sec == 0) {
+    // speed limit not enabled
+    return 0;
+  }
+
+  stat->token -= len;
+  if (stat->token < 0) {
+    // limit the speed
+    printf("drop by speed limit.\n");
+    stat->token = 0;
     return 1;
   }
 
@@ -140,6 +181,9 @@ void task_transfer(struct task* task) {
       continue;
     }
 
+    task->stat.sec_packet_count ++;
+    task->stat.sec_data_count += packet_len;
+
     struct pending_write* w = malloc(sizeof(struct pending_write) + packet_len);
     if (w == NULL) {
       printf("Out of memory!\n");
@@ -151,4 +195,58 @@ void task_transfer(struct task* task) {
     long int delay = lround(config_delay * (1 + config_delay_trashing * (2.0 * rand()/RAND_MAX - 1)));
     timeout_register(delay, task_write, w);
   }
+}
+
+void task_print_stat(struct task* task) {
+  printf("%s: packet: %d transfer: ", task->name, task->stat.sec_packet_count);
+
+  double size = task->stat.sec_data_count * 8;
+  if (size < 1024) {
+    printf("%.2f bps\n", size);
+    return;
+  }
+  size /= 1024;
+  if (size < 1024) {
+    printf("%.2f Kbps\n", size);
+    return;
+  }
+  size /= 1024;
+  if (size < 1024) {
+    printf("%.2f Mbps\n", size);
+    return;
+  }
+  size /= 1024;
+  printf("%.2f Gbps\n", size);
+}
+
+void task_update(struct task* task) {
+  struct speed_stat* stat = &task->stat;
+  struct timespec now, diff;
+  get_now(&now);
+
+  if (stat->sec_packet_count == 0) {
+    stat->sec_data_count = 0;
+    stat->last_sec = now;
+  } else {
+    time_diff(&now, &stat->last_sec, &diff);
+    if (diff.tv_sec > 0) {
+      task_print_stat(task);
+      stat->last_sec = now;
+      stat->sec_packet_count = 0;
+      stat->sec_data_count = 0;
+    }
+  }
+
+  if (stat->token_per_sec == 0) {
+    return;
+  }
+
+  time_diff(&now, &stat->last_update, &diff);
+  long long rem = diff.tv_nsec * stat->token_per_sec / 1000000000;
+  stat->token += rem;
+  if (stat->token > stat->token_brust) {
+    stat->token = stat->token_brust;
+  }
+
+  stat->last_update = now;
 }

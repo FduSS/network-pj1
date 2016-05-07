@@ -72,3 +72,23 @@ int timeout_dispatch() {
   return 0;
 }
 
+int time_diff(struct timespec* x, struct timespec* y, struct timespec* result) {
+  static const long long E9 = 1000000000;
+  if (x->tv_nsec < y->tv_nsec) {
+    long long nsec = (y->tv_nsec - x->tv_nsec) / E9 + 1;
+    y->tv_nsec -= E9 * nsec;
+    y->tv_sec += nsec;
+  }
+  if (x->tv_nsec - y->tv_nsec > E9) {
+    long long nsec = (x->tv_nsec - y->tv_nsec) / E9;
+    y->tv_nsec += E9 * nsec;
+    y->tv_sec -= nsec;
+  }
+
+  result->tv_sec = x->tv_sec - y->tv_sec;
+  result->tv_nsec = x->tv_nsec - y->tv_nsec;
+
+  return x->tv_sec < y->tv_sec;
+}
+
+

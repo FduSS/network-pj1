@@ -9,5 +9,6 @@ extern int parse_arg(int argc, char* argv[]);
 extern double config_drop_rate;
 extern int config_delay;
 extern double config_delay_trashing;
+extern long long config_speed_limit;
 
 #endif
