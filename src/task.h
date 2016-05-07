@@ -7,6 +7,12 @@
 
 #include <stdint.h>
 
+struct speed_stat {
+    int packet_count;
+    long data_count;
+
+};
+
 struct task {
     int in_fd, out_fd;
     uint32_t src, dst, nat_src, nat_dst;

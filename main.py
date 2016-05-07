@@ -108,7 +108,7 @@ class Task:
 
         src_ip = packet[12:16]
         dst_ip = packet[16:20]
-        sys.stdout.write("%s -> %s" % (to_ip_str(src_ip), to_ip_str(dst_ip)))
+        #sys.stdout.write("%s -> %s" % (to_ip_str(src_ip), to_ip_str(dst_ip)))
         if src_ip != self.remote_ip or dst_ip != self.local_ip:
             print("discard unexcepted ip")
             return
@@ -121,18 +121,17 @@ class Task:
 
         packet_type = ord(ip_header[9])
         if packet_type == self.ICMP:
-            sys.stdout.write(' ICMP\n')
+            #sys.stdout.write(' ICMP\n')
             packet = modify_checksum(packet, 2)
         elif packet_type == self.TCP:
-            sys.stdout.write(' TCP\n')
+            #sys.stdout.write(' TCP\n')
             pseudo = struct.pack('!4s4sBBH', self.nat_src_ip, self.nat_dst_ip, 0, self.TCP, packet_len - header_len)
             packet = modify_checksum(packet, 16, ~calc_checksum(pseudo) & 0xffff)
         elif packet_type == self.UDP:
-            sys.stdout.write(' UDP\n')
+            #sys.stdout.write(' UDP\n')
             pseudo = struct.pack('!4s4sBBH', self.nat_src_ip, self.nat_dst_ip, 0, self.UDP, packet_len - header_len)
             packet = modify_checksum(packet, 6, ~calc_checksum(pseudo) & 0xffff)
-        else:
-            sys.stdout.write(' unknown\n')
+            #sys.stdout.write(' unknown\n')
 
         packet = ip_header + packet
 

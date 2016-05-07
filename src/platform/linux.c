@@ -5,7 +5,7 @@
 #include <linux/if_tun.h>
 #include <linux/if.h>
 
-#include "common.h"
+#include "../common.h"
 
 int create_tun(char* name) {
   int fd = open(TUN_DEVICE, O_RDWR);

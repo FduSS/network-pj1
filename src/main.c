@@ -4,6 +4,7 @@
 #include "common.h"
 #include "task.h"
 #include "config.h"
+#include "timeout.h"
 
 #define A_SRC "172.19.0.2"
 #define A_DST "172.19.0.1"
@@ -48,6 +49,8 @@ int main(int argc, char* argv[]) {
     printf("Can't parse arguments!\n");
     exit(-1);
   }
+  timeout_init();
+  srand(time(NULL));
 
   int tun_a = create_tun(A_NAME);
   int tun_b = create_tun(B_NAME);
@@ -81,5 +84,6 @@ int main(int argc, char* argv[]) {
 
   while (1) {
     do_poll(tasks, 2);
+    timeout_dispatch();
   }
 }

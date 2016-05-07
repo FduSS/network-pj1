@@ -1,0 +1,74 @@
+//
+// Created by htc on 15-6-26.
+//
+
+
+#include "timeout.h"
+#include "priority_queue.h"
+#include "common.h"
+
+static struct timeout_task {
+  int id;
+  struct timespec timeout;
+  void (*handler)(void* data);
+  void *data;
+} *tasks = NULL;
+
+static int global_task_id;
+static pri_queue queue;
+
+void timeout_init() {
+  queue = priq_new(16);
+  global_task_id = 1;
+}
+
+int timeout_register(long long msec, void (*handler)(void* data), void* data) {
+  struct timeout_task* task = malloc(sizeof(struct timeout_task));
+  task->id = global_task_id++;
+
+  get_now(&task->timeout);
+  long long nsec = msec * 1000 * 1000 + task->timeout.tv_nsec;
+  while (nsec >= 1000 * 1000 * 1000LL) {
+    nsec -= 1000 * 1000 * 1000LL;
+    task->timeout.tv_sec++;
+  }
+  task->timeout.tv_nsec = nsec;
+
+  task->handler = handler;
+  task->data = data;
+
+  priq_push(queue, task, task->timeout.tv_sec * 1000 + task->timeout.tv_nsec / 1000 / 1000);
+
+  return task->id;
+}
+
+static int time_compare(struct timespec *a, struct timespec *b) {
+  if (a->tv_sec < b->tv_sec) {
+    return 1;
+  }
+  if (a->tv_sec > b->tv_sec) {
+    return 0;
+  }
+  return a->tv_nsec < b->tv_nsec;
+}
+
+int timeout_dispatch() {
+  struct timespec now;
+  get_now(&now);
+
+  while (priq_size(queue)) {
+    struct timeout_task *task = priq_top(queue, NULL);
+    if (time_compare(&now, &task->timeout)) {
+      break;
+    }
+
+    priq_pop(queue, NULL);
+    if (task->handler) {
+      task->handler(task->data);
+    }
+    free(task);
+  }
+
+  return 0;
+}
+

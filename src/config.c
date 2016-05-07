@@ -4,31 +4,37 @@
 #include <printf.h>
 #include "config.h"
 
-float config_drop_rate;
-struct timeval config_delay;
+double config_drop_rate, config_delay_trashing;
+int config_delay;
 
 int parse_arg(int argc, char* argv[]) {
 
   config_drop_rate = 0;
-  config_delay.tv_sec = 0;
-  config_delay.tv_usec = 0;
+  config_delay = 0;
+  config_delay_trashing = 0;
 
   int idx;
   while (1) {
-    int opt = getopt(argc, argv, "t:d:");
+    int opt = getopt(argc, argv, "t:d:r:");
     if (opt == -1) {
       break;
     }
     switch (opt) {
       case 't':
         printf("Set delay to %s ms\n", optarg);
-        config_delay.tv_usec = atoi(optarg);
+        config_delay = atoi(optarg);
         break;
 
       case 'd':
         printf("Set packet drop rate to %s %%\n", optarg);
-        config_drop_rate = (float) atoi(optarg) / 100;
+        config_drop_rate = (double) atoi(optarg) / 100;
         break;
+
+      case 'r':
+        printf("Set delay trashing to %s %%\n", optarg);
+        config_delay_trashing = (double) atoi(optarg) / 100;
+        break;
+
 
       default:
         return -1;

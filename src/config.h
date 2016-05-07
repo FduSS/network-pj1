@@ -6,7 +6,8 @@
 #define TRANSFER_CONFIG_H
 
 extern int parse_arg(int argc, char* argv[]);
-extern float config_drop_rate;
-extern struct timeval config_delay;
+extern double config_drop_rate;
+extern int config_delay;
+extern double config_delay_trashing;
 
-#endif //TRANSFER_CONFIG_H
+#endif

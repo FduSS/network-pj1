@@ -1,12 +1,23 @@
 #include <errno.h>
 #include <unistd.h>
+#include <string.h>
+#include <math.h>
+
 #include "common.h"
 #include "task.h"
+#include "config.h"
+#include "timeout.h"
+
+struct pending_write {
+    int fd;
+    size_t len;
+    char packet[0];
+};
 
 void setup_task(struct task* task) {
 }
 
-static int task_check_packet(struct task* task, char* packet, ssize_t len) {
+static int task_drop_packet(struct task* task, char* packet, ssize_t len) {
   if (len < 20) {
     return -1;
   }
@@ -15,6 +26,10 @@ static int task_check_packet(struct task* task, char* packet, ssize_t len) {
   uint32_t dst = *(uint32_t*)(packet + 16);
   if (src != task->src || dst != task->dst) {
     return -1;
+  }
+
+  if ((double)rand() / RAND_MAX < config_drop_rate) {
+    return 1;
   }
 
   return 0;
@@ -99,6 +114,12 @@ static int task_nat_packet(struct task* task, char* packet, ssize_t len) {
   return 0;
 }
 
+static void task_write(void* data) {
+  struct pending_write* w = (struct pending_write*) data;
+  write(w->fd, w->packet, w->len);
+  free(w);
+}
+
 void task_transfer(struct task* task) {
   char packet[MTU];
 
@@ -111,7 +132,7 @@ void task_transfer(struct task* task) {
       fatal("read");
     }
 
-    if (task_check_packet(task, packet, packet_len)) {
+    if (task_drop_packet(task, packet, packet_len)) {
       continue;
     }
 
@@ -119,6 +140,15 @@ void task_transfer(struct task* task) {
       continue;
     }
 
-    write(task->out_fd, packet, packet_len);
+    struct pending_write* w = malloc(sizeof(struct pending_write) + packet_len);
+    if (w == NULL) {
+      printf("Out of memory!\n");
+      exit(-1);
+    }
+    w->fd = task->out_fd;
+    w->len = packet_len;
+    memcpy(w->packet, packet, packet_len);
+    long int delay = lround(config_delay * (1 + config_delay_trashing * (2.0 * rand()/RAND_MAX - 1)));
+    timeout_register(delay, task_write, w);
   }
 }

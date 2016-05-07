@@ -1,7 +1,3 @@
-//
-// Created by phe on 5/3/2016.
-//
-
 #ifndef TRANSFER_COMMON_H
 #define TRANSFER_COMMON_H
 
@@ -32,7 +28,8 @@
 
 extern int create_tun(char* name);
 extern void setup_tun(char* name, char* src, char* dst, int mtu);
+extern void get_now(struct timespec* t);
 extern void fatal(char* msg);
 
 
-#endif //TRANSFER_COMMON_H
+#endif
