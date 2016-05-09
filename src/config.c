@@ -1,7 +1,7 @@
 #include <sys/time.h>
 #include <getopt.h>
 #include <stdlib.h>
-#include <printf.h>
+#include <stdio.h>
 #include "config.h"
 
 double config_drop_rate, config_delay_trashing;

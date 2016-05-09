@@ -1,6 +1,3 @@
-#include <unistd.h>
-#include <errno.h>
-
 #include "common.h"
 #include "task.h"
 #include "config.h"
@@ -28,7 +25,11 @@ void do_poll(struct task* tasks, int n) {
     }
   }
 
+#ifdef CYGWIN
+  TIMEVAL tv;
+#else
   struct timeval tv;
+#endif
   tv.tv_sec = 0;
   tv.tv_usec = 1;
 
@@ -50,10 +51,15 @@ int main(int argc, char* argv[]) {
     exit(-1);
   }
   timeout_init();
-  srand(time(NULL));
+  struct timespec now;
+  get_now(&now);
+  srand(now.tv_sec);
 
   int tun_a = create_tun(A_NAME);
   int tun_b = create_tun(B_NAME);
+  if (tun_a < 0 || tun_b < 0) {
+    return -1;
+  }
   setup_tun(A_NAME, A_SRC, A_DST, MTU);
   setup_tun(B_NAME, B_DST, B_SRC, MTU);
 

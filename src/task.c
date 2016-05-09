@@ -1,8 +1,4 @@
-#include <errno.h>
 #include <unistd.h>
-#include <string.h>
-#include <math.h>
-
 #include "common.h"
 #include "task.h"
 #include "config.h"

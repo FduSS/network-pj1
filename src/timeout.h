@@ -5,7 +5,6 @@
 #ifndef TRANSFER_TIMEOUT_H
 #define TRANSFER_TIMEOUT_H
 
-#include <sys/time.h>
 #include <stdint.h>
 
 extern void timeout_init();
