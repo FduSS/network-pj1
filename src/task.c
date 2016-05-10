@@ -1,26 +1,22 @@
-#include <unistd.h>
 #include "common.h"
 #include "task.h"
 #include "config.h"
 #include "timeout.h"
 
 struct pending_write {
-    int fd;
+    struct tun_device* tun;
     size_t len;
     char packet[0];
 };
 
-void setup_task(struct task* task, char* name, int in_fd, int out_fd,
+void setup_task(struct task* task, char* name, struct tun_device* tun_in, struct tun_device* tun_out,
                 uint32_t src, uint32_t dst, uint32_t nat_src, uint32_t nat_dst) {
 
-  struct timespec now;
-  get_now(&now);
-
-  long brust = config_speed_limit / 5;
+  long long brust = config_speed_limit / 5;
   *task = (struct task) {
       .name = name,
-      .in_fd = in_fd,
-      .out_fd = out_fd,
+      .tun_in = tun_out,
+      .tun_in = tun_out,
       .src = src,
       .dst = dst,
       .nat_src = nat_src,
@@ -152,7 +148,7 @@ static int task_nat_packet(struct task* task, char* packet, ssize_t len) {
 
 static void task_write(void* data) {
   struct pending_write* w = (struct pending_write*) data;
-  write(w->fd, w->packet, w->len);
+  write_tun(w->tun, w->packet, w->len);
   free(w);
 }
 
@@ -160,7 +156,7 @@ void task_transfer(struct task* task) {
   char packet[MTU];
 
   while (1) {
-    ssize_t packet_len = read(task->in_fd, packet, MTU);
+    ssize_t packet_len = read_tun(task->tun_in, packet, MTU);
     if (packet_len < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return;
@@ -184,7 +180,7 @@ void task_transfer(struct task* task) {
       printf("Out of memory!\n");
       exit(-1);
     }
-    w->fd = task->out_fd;
+    w->tun = task->tun_out;
     w->len = packet_len;
     memcpy(w->packet, packet, packet_len);
     long int delay = lround(config_delay * (1 + config_delay_trashing * (2.0 * rand()/RAND_MAX - 1)));

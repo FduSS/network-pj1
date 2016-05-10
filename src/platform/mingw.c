@@ -42,7 +42,7 @@ const char *winerror(int err) {
 }
 
 
-int create_tun(char* iface) {
+int create_tun(struct tun_device* tun, char* iface) {
   char* device = NULL;
   int status;
   HANDLE handle = NULL;
@@ -132,19 +132,37 @@ int create_tun(char* iface) {
 
   printf("%s (%s) is a %s\n", device, iface, device_info);
 
+  tun->handle = handle;
   return 0;
 }
 
-void setup_tun(char* name, char* src, char* dst, int mtu) {
+void setup_tun(struct tun_device* tun, char* name, char* src, char* dst, int mtu) {
   char cmd[128];
 
   sprintf(cmd, "ifconfig %s %s %s up mtu %d", name, src, dst, mtu);
   system(cmd);
 }
 
-void get_now(struct timespec* t) {
+void get_now() {
   SYSTEMTIME systemtime;
   GetSystemTime(&systemtime);
-  t->tv_sec = systemtime.wSecond + systemtime.wMinute*60 + systemtime.wHour*60*60;
-  t->tv_nsec = systemtime.wMilliseconds * 1000000LL;
+  now.tv_sec = systemtime.wSecond + systemtime.wMinute*60 + systemtime.wHour*60*60;
+  now.tv_nsec = systemtime.wMilliseconds * 1000000LL;
+}
+
+ssize_t write_tun(struct tun_device* tun, void* data, size_t len) {
+  DWORD ret;
+  WriteFile(tun->handle, data, len, &ret, NULL);
+  return ret;
+}
+
+ssize_t read_tun(struct tun_device* tun, void* data, size_t len) {
+  DWORD ret;
+  ReadFile(tun->handle, data, len, &ret, NULL);
+  return ret;
+}
+
+int poll_read(struct task* tasks, int count) {
+  fd_set FDS;
+  return 0;
 }

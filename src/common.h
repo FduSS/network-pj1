@@ -5,6 +5,8 @@
 
 #include <string.h>
 #include <math.h>
+#include <time.h>
+#include "task.h"
 
 #if defined(LINUX)
 #include <fcntl.h>
@@ -33,20 +35,29 @@
 #define A_NAME "tun8"
 #define B_NAME "tun9"
 
-#elif defined(CYGWIN)
-#include <w32api/winsock2.h>
+#elif defined(MINGW)
+#include <windows.h>
 #include <stdio.h>
 #define A_NAME "A"
 #define B_NAME "B"
+
+struct tun_device {
+  HANDLE handle;
+  struct task* read_task;
+};
 
 #else
 #error "Unsupported system! This lab only support cygwin/Linux/MacOSX"
 #endif
 
-extern int create_tun(char* name);
-extern void setup_tun(char* name, char* src, char* dst, int mtu);
-extern void get_now(struct timespec* t);
-extern void fatal(char* msg);
+int create_tun(struct tun_device* tun, char* name);
+void setup_tun(struct tun_device* tun, char* name, char* src, char* dst, int mtu);
+ssize_t write_tun(struct tun_device* tun, void* data, size_t len);
+ssize_t read_tun(struct tun_device* tun, void* data, size_t len);
+int poll_read(struct task* tasks, int count);
+struct timespec now;
+void get_now();
+void fatal(char* msg);
 
 
 #endif
