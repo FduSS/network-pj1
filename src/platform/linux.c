@@ -31,7 +31,7 @@ int create_tun(char* name) {
   return fd;
 }
 
-void setup_tun(char* name, char* src, char* dst, int mtu) {
+void setup_tun(int fd, char* name, char* src, char* dst, int mtu) {
   char cmd[128];
 
   sprintf(cmd, "ip link set %s up mtu %d", name, mtu);
@@ -42,6 +42,6 @@ void setup_tun(char* name, char* src, char* dst, int mtu) {
   system(cmd);
 }
 
-void get_now(struct timespec* t) {
-  clock_gettime(CLOCK_MONOTONIC, t);
+void get_now() {
+  clock_gettime(CLOCK_MONOTONIC, &now);
 }
