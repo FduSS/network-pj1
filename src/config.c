@@ -34,6 +34,7 @@ int parse_arg(int argc, char* argv[]) {
         printf("\t-r\tSet delay trashing rate (%%)\n");
         printf("\t-d\tSet pack drop rate (%%)\n");
         printf("\t-l\tSet speed limit (Mbps)\n");
+        printf("\nExample: %s -t 10 -d 5 -l 100\n", argv[0]);
         exit(0);
         break;
 
