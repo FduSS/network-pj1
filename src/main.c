@@ -19,20 +19,6 @@ int main(int argc, char* argv[]) {
     exit(-1);
   }
 
-#ifdef MINGW
-  WORD wVersionRequested;
-  WSADATA wsaData;
-  int err;
-
-  wVersionRequested = MAKEWORD(2, 2);
-
-  err = WSAStartup(wVersionRequested, &wsaData);
-  if (err != 0) {
-      printf("WSAStartup failed with error: %d\n", err);
-      return 1;
-  }
-#endif
-
   timeout_init();
   get_now();
   srand(now.tv_sec);
