@@ -1,29 +1,16 @@
 #include <stdbool.h>
 #include <memory.h>
+#include <io.h>
+#include <fcntl.h>
+#include <winsock2.h>
 #include "../common.h"
-
-#define TAP_CONTROL_CODE(request,method) \
-  CTL_CODE (FILE_DEVICE_UNKNOWN, request, method, FILE_ANY_ACCESS)
-
-#define TAP_IOCTL_GET_MAC               TAP_CONTROL_CODE (1, METHOD_BUFFERED)
-#define TAP_IOCTL_GET_VERSION           TAP_CONTROL_CODE (2, METHOD_BUFFERED)
-#define TAP_IOCTL_GET_MTU               TAP_CONTROL_CODE (3, METHOD_BUFFERED)
-#define TAP_IOCTL_GET_INFO              TAP_CONTROL_CODE (4, METHOD_BUFFERED)
-#define TAP_IOCTL_CONFIG_POINT_TO_POINT TAP_CONTROL_CODE (5, METHOD_BUFFERED)
-#define TAP_IOCTL_SET_MEDIA_STATUS      TAP_CONTROL_CODE (6, METHOD_BUFFERED)
-#define TAP_IOCTL_CONFIG_DHCP_MASQ      TAP_CONTROL_CODE (7, METHOD_BUFFERED)
-#define TAP_IOCTL_GET_LOG_LINE          TAP_CONTROL_CODE (8, METHOD_BUFFERED)
-#define TAP_IOCTL_CONFIG_DHCP_SET_OPT   TAP_CONTROL_CODE (9, METHOD_BUFFERED)
-#define ADAPTER_KEY "SYSTEM\\CurrentControlSet\\Control\\Class\\{4D36E972-E325-11CE-BFC1-08002BE10318}"
-#define NETWORK_CONNECTIONS_KEY "SYSTEM\\CurrentControlSet\\Control\\Network\\{4D36E972-E325-11CE-BFC1-08002BE10318}"
-#define USERMODEDEVICEDIR "\\\\.\\Global\\"
-#define SYSDEVICEDIR      "\\Device\\"
-#define USERDEVICEDIR     "\\DosDevices\\Global\\"
-#define TAPSUFFIX         ".tap"
-#define TAP_COMPONENT_ID "tap0801"
+#include "./tap-windows.h"
 
 
 static char *device_info = NULL;
+HANDLE fd_map[10];
+int fd_map_top = 1;
+WSAOVERLAPPED overlappedRx[10], overlappedTx[10];
 
 const char *winerror(int err) {
   static char buf[1024], *ptr;
@@ -41,9 +28,37 @@ const char *winerror(int err) {
   return buf;
 }
 
+const char* inet_ntop(int af, const void* src, char* dst, int cnt) {
+  struct sockaddr_in srcaddr;
 
-int create_tun(struct tun_device* tun, char* iface) {
-  char* device = NULL;
+  memset(&srcaddr, 0, sizeof(struct sockaddr_in));
+  memcpy(&(srcaddr.sin_addr), src, sizeof(srcaddr.sin_addr));
+
+  srcaddr.sin_family = af;
+  if (WSAAddressToString((struct sockaddr*) &srcaddr, sizeof(struct sockaddr_in), 0, dst, (LPDWORD) &cnt) != 0) {
+    DWORD rv = WSAGetLastError();
+    printf("WSAAddressToString() : %s\n", winerror(rv));
+    return NULL;
+  }
+  return dst;
+}
+
+
+static void enable_device(HANDLE handle) {
+  ULONG status = 1;
+  DWORD len;
+
+  DeviceIoControl(handle, TAP_WIN_IOCTL_SET_MEDIA_STATUS, &status, sizeof status, &status, sizeof status, &len, NULL);
+}
+
+static void disable_device(HANDLE handle) {
+  DWORD len;
+  ULONG status = 0;
+  DeviceIoControl(handle, TAP_WIN_IOCTL_SET_MEDIA_STATUS, &status, sizeof status, &status, sizeof status, &len, NULL);
+}
+
+
+int create_tun(char* iface) {
   int status;
   HANDLE handle = NULL;
   HKEY key, key2;
@@ -55,8 +70,7 @@ int create_tun(struct tun_device* tun, char* iface) {
   char tapname[1024];
   DWORD len;
 
-  bool found = false;
-
+  int found = false;
   int err;
 
   if(RegOpenKeyEx(HKEY_LOCAL_MACHINE, NETWORK_CONNECTIONS_KEY, 0, KEY_READ, &key)) {
@@ -82,8 +96,10 @@ int create_tun(struct tun_device* tun, char* iface) {
     if(err)
       continue;
 
-    snprintf(tapname, sizeof tapname, USERMODEDEVICEDIR "%s" TAPSUFFIX, adapterid);
-    handle = CreateFile(tapname, GENERIC_WRITE | GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_OVERLAPPED, 0);
+    snprintf(tapname, sizeof tapname, USERMODEDEVICEDIR "%s" TAP_WIN_SUFFIX, adapterid);
+    handle = CreateFile(tapname, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0,
+                        OPEN_EXISTING , FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_OVERLAPPED, 0);
+
     if (handle != INVALID_HANDLE_VALUE) {
       found = true;
       break;
@@ -94,75 +110,105 @@ int create_tun(struct tun_device* tun, char* iface) {
 
   if(!found) {
     printf("No Windows tap device found for %s\n", iface);
-    printf("Please rename one of your tap-window adapter to %s\n", iface);
+    printf("Please add tap-window adapter and rename one of your adapter to %s\n", iface);
     return -1;
-  }
-
-  device = strdup(adapterid);
-
-  if(handle == INVALID_HANDLE_VALUE) {
-    snprintf(tapname, sizeof tapname, USERMODEDEVICEDIR "%s" TAPSUFFIX, device);
-    handle = CreateFile(tapname, GENERIC_WRITE | GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_OVERLAPPED, 0);
-  }
-
-  if(handle == INVALID_HANDLE_VALUE) {
-    printf("%s (%s) is not a usable Windows tap device: %s\n", device, iface, winerror(GetLastError()));
-    return -1;
-  }
-
-  /* Get version information from tap device */
-
-  {
-    ULONG info[3] = {0};
-    DWORD len;
-    if(!DeviceIoControl(handle, TAP_IOCTL_GET_VERSION, &info, sizeof info, &info, sizeof info, &len, NULL))
-      printf("Could not get version information from Windows tap device %s (%s): %s\n", device, iface, winerror(GetLastError()));
-    else {
-      printf("TAP-Windows driver version: %lu.%lu%s\n", info[0], info[1], info[2] ? " (DEBUG)" : "");
-
-      /* Warn if using >=9.21. This is because starting from 9.21, TAP-Win32 seems to use a different, less efficient write path. */
-      if(info[0] == 9 && info[1] >= 21)
-        printf("You are using the newer (>= 9.0.0.21, NDIS6) series of TAP-Win32 drivers. "
-                 "Using these drivers with tinc is not recommanded as it can result in poor performance. "
-                 "You might want to revert back to 9.0.0.9 instead.");
-    }
   }
 
   device_info = "Windows tap device";
+  printf("%s (%s) is a %s\n", adapterid, iface, device_info);
 
-  printf("%s (%s) is a %s\n", device, iface, device_info);
+  int fd = fd_map_top++;
+  fd_map[fd] = handle;
+  memset(overlappedRx + fd, 0, sizeof(OVERLAPPED));
+  memset(overlappedTx + fd, 0, sizeof(OVERLAPPED));
+  overlappedRx[fd].hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+  overlappedTx[fd].hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+  disable_device(handle);
 
-  tun->handle = handle;
-  return 0;
+  return fd;
 }
 
-void setup_tun(struct tun_device* tun, char* name, char* src, char* dst, int mtu) {
+void setup_tun(int fd, char* name, char* src, char* dst, int mtu) {
   char cmd[128];
+  int ret;
+  DWORD len;
 
-  sprintf(cmd, "ifconfig %s %s %s up mtu %d", name, src, dst, mtu);
-  system(cmd);
+  sprintf(cmd, "netsh interface ipv4 set subinterface %s mtu=%d store=persistent", name, mtu);
+  ret = system(cmd);
+  if (ret) {
+    printf("Set MTU failed, return %d\n", ret);
+    exit(-1);
+  };
+
+  sprintf(cmd, "netsh interface ip set address \"%s\" static %s 255.255.255.0 %s", name, src, dst);
+  ret = system(cmd);
+  if (ret) {
+    printf("Set ip addr failed, return %d\n", ret);
+    exit(-1);
+  };
+
+
+  struct tun_info {
+    uint32_t src, dst, mask;
+  } info;
+  info.src = (inet_addr(src));
+  info.mask = (inet_addr("255.255.255.0"));
+  info.dst = (inet_addr(dst)) & info.mask;
+
+  enable_device(fd_map[fd]);
+  ret = DeviceIoControl(fd_map[fd], TAP_WIN_IOCTL_CONFIG_TUN, &info, sizeof(info), &info, sizeof(info), &len, NULL);
+  if (ret == 0) {
+    printf("CONFIG_TUN failed: %s\n", winerror(GetLastError()));
+//    exit(-1);
+  }
+
 }
 
-void get_now() {
+ssize_t read_tun(int fd, char* data, size_t len) {
+  HANDLE handle = fd_map[fd];
+  DWORD ret;
+  overlappedRx[fd].Offset = 0;
+  overlappedRx[fd].OffsetHigh = 0;
+  int val = ReadFile(handle, data, len, &ret, overlappedRx + fd);
+  if (val == 0) {
+    if (GetLastError() != ERROR_IO_PENDING) {
+      printf("READ failed: %s\n", winerror(GetLastError()));
+    } else {
+      val = GetOverlappedResult(handle, overlappedRx + fd, &ret, TRUE);
+      if (val == 0) {
+        printf("READ failed: %s\n", winerror(GetLastError()));
+      }
+    }
+  }
+  return ret;
+}
+
+ssize_t write_tun(int fd, char* data, size_t len) {
+  HANDLE handle = fd_map[fd];
+  DWORD ret;
+  overlappedTx[fd].Offset = 0;
+  overlappedTx[fd].OffsetHigh = 0;
+  int val = WriteFile(handle, data, len, &ret, overlappedTx + fd);
+  if (val == 0) {
+    if (GetLastError() != ERROR_IO_PENDING) {
+      printf("WRITE failed: %s\n", winerror(GetLastError()));
+    } else {
+      val = GetOverlappedResult(handle, overlappedTx + fd, &ret, TRUE);
+      if (val == 0) {
+        printf("WRITE failed: %s\n", winerror(GetLastError()));
+      }
+    }
+  }
+
+  return ret;
+}
+
+struct timespec get_now() {
   SYSTEMTIME systemtime;
   GetSystemTime(&systemtime);
+
+  struct timespec now;
   now.tv_sec = systemtime.wSecond + systemtime.wMinute*60 + systemtime.wHour*60*60;
   now.tv_nsec = systemtime.wMilliseconds * 1000000LL;
-}
-
-ssize_t write_tun(struct tun_device* tun, void* data, size_t len) {
-  DWORD ret;
-  WriteFile(tun->handle, data, len, &ret, NULL);
-  return ret;
-}
-
-ssize_t read_tun(struct tun_device* tun, void* data, size_t len) {
-  DWORD ret;
-  ReadFile(tun->handle, data, len, &ret, NULL);
-  return ret;
-}
-
-int poll_read(struct task* tasks, int count) {
-  fd_set FDS;
-  return 0;
+  return now;
 }

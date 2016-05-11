@@ -4,44 +4,54 @@
 #include "timeout.h"
 
 struct pending_write {
-    struct tun_device* tun;
-    size_t len;
-    char packet[0];
+  int fd;
+  size_t len;
+  char packet[0];
 };
 
-void setup_task(struct task* task, char* name, struct tun_device* tun_in, struct tun_device* tun_out,
+void setup_task(struct task* task, char* name, int fd_in, int fd_out,
                 uint32_t src, uint32_t dst, uint32_t nat_src, uint32_t nat_dst) {
+  struct timespec now = get_now();
 
   long long brust = config_speed_limit / 5;
   *task = (struct task) {
       .name = name,
-      .tun_in = tun_out,
-      .tun_in = tun_out,
+      .fd_in = fd_in,
+      .fd_out = fd_out,
       .src = src,
       .dst = dst,
       .nat_src = nat_src,
       .nat_dst = nat_dst,
       .stat = {
-          .sec_data_count = 0,
-          .sec_packet_count = 0,
+          .data_count = 0,
+          .packet_count = 0,
           .token = brust,
           .token_brust = brust,
           .token_per_sec = config_speed_limit,
           .last_update = now,
-          .last_sec = now,
       }
   };
+
+  pthread_mutex_init(&task->stat.mutex, NULL);
 }
 
 static int task_drop_packet(struct task* task, char* packet, ssize_t len) {
+  char buf[256];
   if (len < 20) {
     return -1;
   }
 
   uint32_t src = *(uint32_t*)(packet + 12);
   uint32_t dst = *(uint32_t*)(packet + 16);
-  if (src != task->src || dst != task->dst) {
-    // unexcepted packet
+
+  if (src != task->src) {
+//    printf("unexpected src %s %u\n", inet_ntop(AF_INET, &src, buf, sizeof(buf)), src);
+//    printf("expected src %s %u\n", inet_ntop(AF_INET, &task->src, buf, sizeof(buf)), task->src);
+    return -1;
+  }
+
+  if (dst != task->dst) {
+//    printf("unexpected dst %s\n", inet_ntop(AF_INET, &dst, buf, sizeof(buf)));
     return -1;
   }
 
@@ -148,7 +158,7 @@ static int task_nat_packet(struct task* task, char* packet, ssize_t len) {
 
 static void task_write(void* data) {
   struct pending_write* w = (struct pending_write*) data;
-  write_tun(w->tun, w->packet, w->len);
+  write_tun(w->fd, w->packet, w->len);
   free(w);
 }
 
@@ -156,15 +166,21 @@ void task_transfer(struct task* task) {
   char packet[MTU];
 
   while (1) {
-    ssize_t packet_len = read_tun(task->tun_in, packet, MTU);
+    ssize_t packet_len = read_tun(task->fd_in, packet, MTU);
     if (packet_len < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        return;
-      }
+//      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+//        return;
+//      }
       fatal("read");
     }
 
-    if (task_drop_packet(task, packet, packet_len)) {
+    pthread_mutex_lock(&task->stat.mutex);
+    task->stat.packet_count ++;
+    task->stat.data_count += packet_len;
+    int drop_packet = task_drop_packet(task, packet, packet_len);
+    pthread_mutex_unlock(&task->stat.mutex);
+
+    if (drop_packet) {
       continue;
     }
 
@@ -172,15 +188,13 @@ void task_transfer(struct task* task) {
       continue;
     }
 
-    task->stat.sec_packet_count ++;
-    task->stat.sec_data_count += packet_len;
 
     struct pending_write* w = malloc(sizeof(struct pending_write) + packet_len);
     if (w == NULL) {
       printf("Out of memory!\n");
       exit(-1);
     }
-    w->tun = task->tun_out;
+    w->fd = task->fd_out;
     w->len = packet_len;
     memcpy(w->packet, packet, packet_len);
     long int delay = lround(config_delay * (1 + config_delay_trashing * (2.0 * rand()/RAND_MAX - 1)));
@@ -189,9 +203,9 @@ void task_transfer(struct task* task) {
 }
 
 void task_print_stat(struct task* task) {
-  printf("%s: packet: %d transfer: ", task->name, task->stat.sec_packet_count);
+  printf("%s: packet: %d transfer: ", task->name, task->stat.packet_count);
 
-  double size = task->stat.sec_data_count * 8;
+  double size = task->stat.data_count * 8;
   if (size < 1024) {
     printf("%.2f bps\n", size);
     return;
@@ -210,26 +224,20 @@ void task_print_stat(struct task* task) {
   printf("%.2f Gbps\n", size);
 }
 
-void task_update(struct task* task) {
+void task_update(struct task* task, int print_stat) {
   struct speed_stat* stat = &task->stat;
-  struct timespec now, diff;
-  get_now(&now);
+  struct timespec diff, now = get_now();
 
-  if (stat->sec_packet_count == 0) {
-    stat->sec_data_count = 0;
-    stat->last_sec = now;
-  } else {
-    time_diff(&now, &stat->last_sec, &diff);
-    if (diff.tv_sec > 0) {
-      task_print_stat(task);
-      stat->last_sec = now;
-      stat->sec_packet_count = 0;
-      stat->sec_data_count = 0;
-    }
+  pthread_mutex_lock(&stat->mutex);
+
+  if (print_stat) {
+    task_print_stat(task);
+    stat->packet_count = 0;
+    stat->data_count = 0;
   }
 
   if (stat->token_per_sec == 0) {
-    return;
+    goto task_update_final;
   }
 
   time_diff(&now, &stat->last_update, &diff);
@@ -240,4 +248,7 @@ void task_update(struct task* task) {
   }
 
   stat->last_update = now;
+
+task_update_final:
+  pthread_mutex_unlock(&stat->mutex);
 }
