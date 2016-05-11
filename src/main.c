@@ -12,37 +12,6 @@ void fatal(char* error) {
   exit(-1);
 }
 
-//void do_poll(struct task* tasks, int n) {
-//  int nfds = 0;
-//  fd_set rfds;
-//  FD_ZERO(&rfds);
-//
-//  for (int i = 0; i < n; ++i) {
-//    FD_SET(tasks[i].fd_in, &rfds);
-//    if (tasks[i].fd_in + 1 > nfds) {
-//      nfds = tasks[i].fd_in + 1;
-//    }
-//  }
-//
-//#ifdef CYGWIN
-//  TIMEVAL tv;
-//#else
-//  struct timeval tv;
-//#endif
-//  tv.tv_sec = 0;
-//  tv.tv_usec = 1;
-//
-//  int ret = select(nfds, &rfds, NULL, NULL, &tv);
-//  if (ret < 0) {
-//    fatal("select");
-//  }
-//
-//  for (int i = 0; i < n; ++i) {
-//    if (FD_ISSET(tasks[i].fd_in, &rfds)) {
-//      task_transfer(tasks + i);
-//    }
-//  }
-//}
 
 int main(int argc, char* argv[]) {
   if (parse_arg(argc, argv)) {

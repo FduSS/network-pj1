@@ -26,14 +26,14 @@ int create_tun(char* name) {
   return fd;
 }
 
-void setup_tun(char* name, char* src, char* dst, int mtu) {
+void setup_tun(int fd, char* name, char* src, char* dst, int mtu) {
   char cmd[128];
 
   sprintf(cmd, "ifconfig %s %s %s up mtu %d", name, src, dst, mtu);
   system(cmd);
 }
 
-void get_now(struct timespec* t) {
+void get_now() {
   static double orwl_timebase = 0.0;
   static uint64_t orwl_timestart = 0;
 
@@ -47,6 +47,6 @@ void get_now(struct timespec* t) {
 
   double diff = (mach_absolute_time() - orwl_timestart) * orwl_timebase;
 
-  t->tv_sec = (diff * ORWL_NANO);
-  t->tv_nsec = (diff - (t->tv_sec * ORWL_GIGA));
+  now.tv_sec = (diff * ORWL_NANO);
+  now.tv_nsec = (diff - (now.tv_sec * ORWL_GIGA));
 }
