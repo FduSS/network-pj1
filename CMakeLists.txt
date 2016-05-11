@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.5)
 project(transfer)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -D_GNU_SOURCE")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -D_GNU_SOURCE -O2")
 set(LINK_LIBS )
 
 if(APPLE)
