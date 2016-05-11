@@ -25,25 +25,25 @@ const char *winerror(int err) {
     strncpy(buf, "(unable to format errormessage)", sizeof(buf));
   };
 
-  if((ptr = strchr(buf, '\r')))
+  if ((ptr = strchr(buf, '\r')))
     *ptr = '\0';
 
   return buf;
 }
 
-void win_fatal(char* msg) {
+void win_fatal(char *msg) {
   printf("%s failed: %s\n", msg, winerror(GetLastError()));
   exit(-1);
 }
 
-const char* inet_ntop(int af, const void* src, char* dst, int cnt) {
+const char *inet_ntop(int af, const void *src, char *dst, int cnt) {
   struct sockaddr_in srcaddr;
 
   memset(&srcaddr, 0, sizeof(struct sockaddr_in));
   memcpy(&(srcaddr.sin_addr), src, sizeof(srcaddr.sin_addr));
 
   srcaddr.sin_family = af;
-  if (WSAAddressToString((struct sockaddr*) &srcaddr, sizeof(struct sockaddr_in), 0, dst, (LPDWORD) &cnt) != 0) {
+  if (WSAAddressToString((struct sockaddr *) &srcaddr, sizeof(struct sockaddr_in), 0, dst, (LPDWORD) &cnt) != 0) {
     DWORD rv = WSAGetLastError();
     printf("WSAAddressToString() : %s\n", winerror(rv));
     return NULL;
@@ -66,7 +66,7 @@ static void disable_device(HANDLE handle) {
 }
 
 
-int create_tun(char* iface) {
+int create_tun(char *iface) {
   int status;
   HANDLE handle = NULL;
   HKEY key, key2;
@@ -81,31 +81,31 @@ int create_tun(char* iface) {
   int found = false;
   int err;
 
-  if(RegOpenKeyEx(HKEY_LOCAL_MACHINE, NETWORK_CONNECTIONS_KEY, 0, KEY_READ, &key)) {
+  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, NETWORK_CONNECTIONS_KEY, 0, KEY_READ, &key)) {
     win_fatal("Read registry");
   }
 
   for (i = 0; ; i++) {
     len = sizeof adapterid;
-    if(RegEnumKeyEx(key, i, adapterid, &len, 0, 0, 0, NULL))
+    if (RegEnumKeyEx(key, i, adapterid, &len, 0, 0, 0, NULL))
       break;
 
     snprintf(regpath, sizeof regpath, "%s\\%s\\Connection", NETWORK_CONNECTIONS_KEY, adapterid);
 
-    if(RegOpenKeyEx(HKEY_LOCAL_MACHINE, regpath, 0, KEY_READ, &key2))
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, regpath, 0, KEY_READ, &key2))
       continue;
 
     len = sizeof adaptername;
-    err = RegQueryValueEx(key2, "Name", 0, 0, (LPBYTE)adaptername, &len);
+    err = RegQueryValueEx(key2, "Name", 0, 0, (LPBYTE) adaptername, &len);
 
     RegCloseKey(key2);
 
-    if(err)
+    if (err)
       continue;
 
     snprintf(tapname, sizeof tapname, USERMODEDEVICEDIR "%s" TAP_WIN_SUFFIX, adapterid);
     handle = CreateFile(tapname, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0,
-                        OPEN_EXISTING , FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_OVERLAPPED, 0);
+                        OPEN_EXISTING, FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_OVERLAPPED, 0);
 
     if (handle != INVALID_HANDLE_VALUE) {
       found = true;
@@ -115,7 +115,7 @@ int create_tun(char* iface) {
 
   RegCloseKey(key);
 
-  if(!found) {
+  if (!found) {
     printf("No Windows tap device found for %s\n", iface);
     printf("Please add tap-window adapter and rename one of your adapter to %s\n", iface);
     return -1;
@@ -137,7 +137,7 @@ int create_tun(char* iface) {
   return fd;
 }
 
-void setup_tun(int fd, char* name, char* src, char* dst, int mtu) {
+void setup_tun(int fd, char *name, char *src, char *dst, int mtu) {
   char cmd[128];
   int ret;
   DWORD len;
@@ -172,7 +172,7 @@ void setup_tun(int fd, char* name, char* src, char* dst, int mtu) {
 
 }
 
-ssize_t read_tun(int fd, char* data, size_t len) {
+ssize_t read_tun(int fd, char *data, size_t len) {
   HANDLE handle = fd_map[fd];
   DWORD ret;
 
@@ -207,7 +207,7 @@ ssize_t read_tun(int fd, char* data, size_t len) {
   return read_data_len[fd];
 }
 
-ssize_t write_tun(int fd, char* data, size_t len) {
+ssize_t write_tun(int fd, char *data, size_t len) {
   HANDLE handle = fd_map[fd];
   DWORD ret;
   ResetEvent(overlappedTx->hEvent);
@@ -232,12 +232,12 @@ void get_now() {
   SYSTEMTIME systemtime;
   GetSystemTime(&systemtime);
 
-  now.tv_sec = systemtime.wSecond + systemtime.wMinute*60 + systemtime.wHour*60*60;
+  now.tv_sec = systemtime.wSecond + systemtime.wMinute * 60 + systemtime.wHour * 60 * 60;
   now.tv_nsec = systemtime.wMilliseconds * 1000000LL;
 }
 
-void poll_read(struct task* tasks, int task_count) {
-  HANDLE events[task_count];
+void poll_read(struct task *tasks, int task_count) {
+  HANDLE events[2];
   for (int i = 0; i < task_count; ++i) {
     events[i] = overlappedRx[tasks[i].fd_in].hEvent;
   }

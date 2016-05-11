@@ -34,7 +34,7 @@
 #define A_NAME "tun8"
 #define B_NAME "tun9"
 
-#elif defined(MINGW)
+#elif defined(WINDOWS)
 #include <windows.h>
 #include <stdio.h>
 #include <io.h>
@@ -42,8 +42,12 @@
 #define B_NAME "tunB"
 const char* inet_ntop(int af, const void* src, char* dst, int cnt);
 
+#ifdef _MSC_VER
+#define ssize_t SSIZE_T
+#endif
+
 #else
-#error "Unsupported system! This lab only support cygwin/Linux/MacOSX"
+#error "Unsupported system! This lab only support Windows/Linux/MacOSX"
 #endif
 
 int create_tun(char* name);

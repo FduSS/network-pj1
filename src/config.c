@@ -1,8 +1,14 @@
-#include <sys/time.h>
-#include <getopt.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "config.h"
+
+#ifdef _MSC_VER
+#include "./platform/win_getopt.h"
+#else
+
+#include <getopt.h>
+
+#endif
 
 double config_drop_rate, config_delay_trashing;
 int config_delay;
