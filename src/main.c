@@ -1,5 +1,4 @@
 #include "common.h"
-#include "task.h"
 #include "config.h"
 #include "timeout.h"
 
@@ -66,7 +65,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   timeout_init();
-  struct timespec now = get_now();
+  get_now();
   srand(now.tv_sec);
 
   int tunA, tunB;
@@ -97,7 +96,6 @@ int main(int argc, char* argv[]) {
     poll_read(tasks, 2);
 
     struct timespec interval;
-    now = get_now();
     time_diff(&now, &last_sec, &interval);
     int print_stat = interval.tv_sec > 0;
     if (print_stat) {
@@ -106,6 +104,7 @@ int main(int argc, char* argv[]) {
     }
 
     timeout_dispatch();
+    get_now();
     for (int i = 0; i < 2; ++i) {
       task_update(tasks + i, print_stat);
     }

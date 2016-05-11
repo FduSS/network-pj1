@@ -228,14 +228,12 @@ ssize_t write_tun(int fd, char* data, size_t len) {
   return ret;
 }
 
-struct timespec get_now() {
+void get_now() {
   SYSTEMTIME systemtime;
   GetSystemTime(&systemtime);
 
-  struct timespec now;
   now.tv_sec = systemtime.wSecond + systemtime.wMinute*60 + systemtime.wHour*60*60;
   now.tv_nsec = systemtime.wMilliseconds * 1000000LL;
-  return now;
 }
 
 void poll_read(struct task* tasks, int task_count) {
@@ -254,6 +252,7 @@ void poll_read(struct task* tasks, int task_count) {
     }
   }
 
+  get_now();
   for (int i = 0; i < task_count; ++i) {
     int fd = tasks[i].fd_in;
     int ret = GetOverlappedResult(fd_map[fd], overlappedRx + fd, read_data_len + fd, FALSE);

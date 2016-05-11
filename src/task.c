@@ -1,5 +1,4 @@
 #include "common.h"
-#include "task.h"
 #include "config.h"
 #include "timeout.h"
 
@@ -11,8 +10,6 @@ struct pending_write {
 
 void setup_task(struct task* task, char* name, int fd_in, int fd_out,
                 uint32_t src, uint32_t dst, uint32_t nat_src, uint32_t nat_dst) {
-  struct timespec now = get_now();
-
   long long brust = config_speed_limit / 5;
   *task = (struct task) {
       .name = name,
@@ -222,7 +219,7 @@ void task_print_stat(struct task* task) {
 
 void task_update(struct task* task, int print_stat) {
   struct speed_stat* stat = &task->stat;
-  struct timespec diff, now = get_now();
+  struct timespec diff;
 
   if (print_stat) {
     task_print_stat(task);

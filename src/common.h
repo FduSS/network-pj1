@@ -51,7 +51,10 @@ void setup_tun(int fd, char* name, char* src, char* dst, int mtu);
 ssize_t read_tun(int fd, char* data, size_t len);
 ssize_t write_tun(int fd, char* data, size_t len);
 void poll_read(struct task* tasks, int task_count);
-struct timespec get_now();
+
+extern struct timespec now;
+
+void get_now();
 void fatal(char* msg);
 
 

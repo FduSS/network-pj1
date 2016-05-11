@@ -25,7 +25,7 @@ int timeout_register(long long msec, void (*handler)(void* data), void* data) {
 
   task->id = global_task_id++;
 
-  task->timeout = get_now();
+  task->timeout = now;
   long long nsec = msec * 1000 * 1000 + task->timeout.tv_nsec;
   while (nsec >= 1000 * 1000 * 1000LL) {
     nsec -= 1000 * 1000 * 1000LL;
@@ -52,7 +52,6 @@ static int time_compare(struct timespec *a, struct timespec *b) {
 }
 
 int timeout_dispatch() {
-  struct timespec now = get_now();
   static struct timeout_task* task_buf[65536];
   struct timeout_task **task_top = task_buf, **task = task_buf;
 
