@@ -17,11 +17,20 @@ int parse_arg(int argc, char* argv[]) {
 
   int idx;
   while (1) {
-    int opt = getopt(argc, argv, "t:d:r:l:");
+    int opt = getopt(argc, argv, "t:d:r:l:h");
     if (opt == -1) {
       break;
     }
     switch (opt) {
+      case 'h':
+        printf("Usage:\n");
+        printf("\t-t\tSet delay (ms)\n");
+        printf("\t-r\tSet delay trashing rate (%%)\n");
+        printf("\t-d\tSet pack drop rate (%%)\n");
+        printf("\t-l\tSet speed limit (Mbps)\n");
+        exit(0);
+        break;
+
       case 't':
         printf("Set delay to %s ms\n", optarg);
         config_delay = atoi(optarg);

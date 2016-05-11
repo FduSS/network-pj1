@@ -31,8 +31,6 @@ void setup_task(struct task* task, char* name, int fd_in, int fd_out,
           .last_update = now,
       }
   };
-
-  pthread_mutex_init(&task->stat.mutex, NULL);
 }
 
 static int task_drop_packet(struct task* task, char* packet, ssize_t len) {
@@ -168,17 +166,15 @@ void task_transfer(struct task* task) {
   while (1) {
     ssize_t packet_len = read_tun(task->fd_in, packet, MTU);
     if (packet_len < 0) {
-//      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-//        return;
-//      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return;
+      }
       fatal("read");
     }
 
-    pthread_mutex_lock(&task->stat.mutex);
     task->stat.packet_count ++;
     task->stat.data_count += packet_len;
     int drop_packet = task_drop_packet(task, packet, packet_len);
-    pthread_mutex_unlock(&task->stat.mutex);
 
     if (drop_packet) {
       continue;
@@ -228,8 +224,6 @@ void task_update(struct task* task, int print_stat) {
   struct speed_stat* stat = &task->stat;
   struct timespec diff, now = get_now();
 
-  pthread_mutex_lock(&stat->mutex);
-
   if (print_stat) {
     task_print_stat(task);
     stat->packet_count = 0;
@@ -237,7 +231,7 @@ void task_update(struct task* task, int print_stat) {
   }
 
   if (stat->token_per_sec == 0) {
-    goto task_update_final;
+    return;
   }
 
   time_diff(&now, &stat->last_update, &diff);
@@ -248,7 +242,4 @@ void task_update(struct task* task, int print_stat) {
   }
 
   stat->last_update = now;
-
-task_update_final:
-  pthread_mutex_unlock(&stat->mutex);
 }

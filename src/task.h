@@ -6,10 +6,8 @@
 #define TRANSFER_TASK_H
 
 #include <stdint.h>
-#include <pthread.h>
 
 struct speed_stat {
-  pthread_mutex_t mutex;
   int packet_count;
   long data_count;
   long long token, token_per_sec, token_brust;
@@ -17,7 +15,6 @@ struct speed_stat {
 };
 
 struct task {
-  pthread_t tid;
   char* name;
   int fd_in, fd_out;
   uint32_t src, dst, nat_src, nat_dst;

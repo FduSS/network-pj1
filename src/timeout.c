@@ -2,11 +2,8 @@
 // Created by htc on 15-6-26.
 //
 
-#include <pthread.h>
 #include "priority_queue.h"
 #include "common.h"
-
-static pthread_mutex_t timeout_mutex;
 
 static struct timeout_task {
   int id;
@@ -21,12 +18,10 @@ static pri_queue queue;
 void timeout_init() {
   queue = priq_new(16);
   global_task_id = 1;
-  pthread_mutex_init(&timeout_mutex, NULL);
 }
 
 int timeout_register(long long msec, void (*handler)(void* data), void* data) {
   struct timeout_task* task = malloc(sizeof(struct timeout_task));
-  pthread_mutex_lock(&timeout_mutex);
 
   task->id = global_task_id++;
 
@@ -43,7 +38,6 @@ int timeout_register(long long msec, void (*handler)(void* data), void* data) {
 
   priq_push(queue, task, task->timeout.tv_sec * 1000 + task->timeout.tv_nsec / 1000 / 1000);
 
-  pthread_mutex_unlock(&timeout_mutex);
   return task->id;
 }
 
@@ -58,7 +52,6 @@ static int time_compare(struct timespec *a, struct timespec *b) {
 }
 
 int timeout_dispatch() {
-  pthread_mutex_lock(&timeout_mutex);
   struct timespec now = get_now();
   static struct timeout_task* task_buf[65536];
   struct timeout_task **task_top = task_buf, **task = task_buf;
@@ -72,7 +65,6 @@ int timeout_dispatch() {
     priq_pop(queue, NULL);
     *task_top++ = t;
   }
-  pthread_mutex_unlock(&timeout_mutex);
 
   while (task < task_top) {
     if ((*task)->handler) {

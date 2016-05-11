@@ -1,16 +1,19 @@
 #include <stdbool.h>
 #include <memory.h>
 #include <io.h>
-#include <fcntl.h>
+#include <errno.h>
 #include <winsock2.h>
 #include "../common.h"
 #include "./tap-windows.h"
 
 
 static char *device_info = NULL;
-HANDLE fd_map[10];
-int fd_map_top = 1;
-WSAOVERLAPPED overlappedRx[10], overlappedTx[10];
+HANDLE fd_map[2];
+int fd_map_top = 0;
+WSAOVERLAPPED overlappedRx[2], overlappedTx[2];
+char read_buf[2][MTU];
+int read_data_waiting[2];
+DWORD read_data_len[2];
 
 const char *winerror(int err) {
   static char buf[1024], *ptr;
@@ -26,6 +29,11 @@ const char *winerror(int err) {
     *ptr = '\0';
 
   return buf;
+}
+
+void win_fatal(char* msg) {
+  printf("%s failed: %s\n", msg, winerror(GetLastError()));
+  exit(-1);
 }
 
 const char* inet_ntop(int af, const void* src, char* dst, int cnt) {
@@ -74,8 +82,7 @@ int create_tun(char* iface) {
   int err;
 
   if(RegOpenKeyEx(HKEY_LOCAL_MACHINE, NETWORK_CONNECTIONS_KEY, 0, KEY_READ, &key)) {
-    printf("Unable to read registry: %s\n", winerror(GetLastError()));
-    return -1;
+    win_fatal("Read registry");
   }
 
   for (i = 0; ; i++) {
@@ -123,6 +130,8 @@ int create_tun(char* iface) {
   memset(overlappedTx + fd, 0, sizeof(OVERLAPPED));
   overlappedRx[fd].hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
   overlappedTx[fd].hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+  read_data_waiting[fd] = 0;
+  read_data_len[fd] = 0xffffffff;
   disable_device(handle);
 
   return fd;
@@ -158,8 +167,7 @@ void setup_tun(int fd, char* name, char* src, char* dst, int mtu) {
   enable_device(fd_map[fd]);
   ret = DeviceIoControl(fd_map[fd], TAP_WIN_IOCTL_CONFIG_TUN, &info, sizeof(info), &info, sizeof(info), &len, NULL);
   if (ret == 0) {
-    printf("CONFIG_TUN failed: %s\n", winerror(GetLastError()));
-//    exit(-1);
+    win_fatal("CONFIG_TUN");
   }
 
 }
@@ -167,35 +175,52 @@ void setup_tun(int fd, char* name, char* src, char* dst, int mtu) {
 ssize_t read_tun(int fd, char* data, size_t len) {
   HANDLE handle = fd_map[fd];
   DWORD ret;
-  overlappedRx[fd].Offset = 0;
-  overlappedRx[fd].OffsetHigh = 0;
-  int val = ReadFile(handle, data, len, &ret, overlappedRx + fd);
+
+  if (read_data_waiting[fd]) {
+    if (read_data_len[fd] == 0xffffffff) {
+      errno = EAGAIN;
+      return -1;
+    }
+    memcpy(data, read_buf[fd], read_data_len[fd]);
+    read_data_waiting[fd] = 0;
+    ret = read_data_len[fd];
+    read_data_len[fd] = 0xffffffff;
+    ResetEvent(overlappedRx[fd].hEvent);
+    overlappedRx[fd].Offset = 0;
+    overlappedRx[fd].OffsetHigh = 0;
+    return ret;
+  }
+
+  read_data_len[fd] = 0xffffffff;
+  int val = ReadFile(handle, read_buf + fd, len, read_data_len + fd, overlappedRx + fd);
   if (val == 0) {
     if (GetLastError() != ERROR_IO_PENDING) {
-      printf("READ failed: %s\n", winerror(GetLastError()));
+      win_fatal("ReadFile");
     } else {
-      val = GetOverlappedResult(handle, overlappedRx + fd, &ret, TRUE);
-      if (val == 0) {
-        printf("READ failed: %s\n", winerror(GetLastError()));
-      }
+      errno = EAGAIN;
+      read_data_waiting[fd] = 1;
+      return -1;
     }
   }
-  return ret;
+
+  memcpy(data, read_buf + fd, read_data_len[fd]);
+  return read_data_len[fd];
 }
 
 ssize_t write_tun(int fd, char* data, size_t len) {
   HANDLE handle = fd_map[fd];
   DWORD ret;
+  ResetEvent(overlappedTx->hEvent);
   overlappedTx[fd].Offset = 0;
   overlappedTx[fd].OffsetHigh = 0;
   int val = WriteFile(handle, data, len, &ret, overlappedTx + fd);
   if (val == 0) {
     if (GetLastError() != ERROR_IO_PENDING) {
-      printf("WRITE failed: %s\n", winerror(GetLastError()));
+      win_fatal("WriteFile");
     } else {
       val = GetOverlappedResult(handle, overlappedTx + fd, &ret, TRUE);
       if (val == 0) {
-        printf("WRITE failed: %s\n", winerror(GetLastError()));
+        win_fatal("GetOverlappedResult for write");
       }
     }
   }
@@ -211,4 +236,33 @@ struct timespec get_now() {
   now.tv_sec = systemtime.wSecond + systemtime.wMinute*60 + systemtime.wHour*60*60;
   now.tv_nsec = systemtime.wMilliseconds * 1000000LL;
   return now;
+}
+
+void poll_read(struct task* tasks, int task_count) {
+  HANDLE events[task_count];
+  for (int i = 0; i < task_count; ++i) {
+    events[i] = overlappedRx[tasks[i].fd_in].hEvent;
+  }
+
+  int ret = WaitForMultipleObjects(task_count, events, FALSE, 1);
+  if (ret == WAIT_TIMEOUT) {
+    return;
+  }
+  if (!(ret >= WAIT_OBJECT_0 && (ret < WAIT_OBJECT_0 + task_count))) {
+    if (GetLastError() != ERROR_IO_INCOMPLETE) {
+      win_fatal("WaitForMultipleObjects");
+    }
+  }
+
+  for (int i = 0; i < task_count; ++i) {
+    int fd = tasks[i].fd_in;
+    int ret = GetOverlappedResult(fd_map[fd], overlappedRx + fd, read_data_len + fd, FALSE);
+    if (ret == 0) {
+      if (GetLastError() == ERROR_IO_INCOMPLETE) {
+        continue;
+      }
+      win_fatal("GetOverlappedResult for read");
+    }
+    task_transfer(tasks + i);
+  }
 }

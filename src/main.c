@@ -87,22 +87,19 @@ int main(int argc, char* argv[]) {
   setup_task(tasks + 1, "B->A", tunB, tunA,
              inet_addr(B_DST), inet_addr(B_SRC), inet_addr(A_DST), inet_addr(A_SRC));
 
-  for (int i = 0; i < 2; ++i) {
-    pthread_create(&tasks[i].tid, NULL, (void*(*)(void*))task_transfer, tasks + i);
-  }
-
   struct timespec last_sec = now;
 
-  while (1) {
-    struct timespec interval;
-    interval.tv_sec = 0;
-    interval.tv_nsec = 1000000LL;
-    nanosleep(&interval, NULL);
+  for (int i = 0; i < 2; ++i) {
+    task_transfer(tasks + i);
+  }
 
+  while (1) {
+    poll_read(tasks, 2);
+
+    struct timespec interval;
     now = get_now();
     time_diff(&now, &last_sec, &interval);
     int print_stat = interval.tv_sec > 0;
-//    print_stat = 0;
     if (print_stat) {
       last_sec = now;
       printf("\n");
